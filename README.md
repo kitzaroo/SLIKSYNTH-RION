@@ -1,4 +1,8 @@
+<img width="986" height="285" alt="image" src="https://github.com/user-attachments/assets/e8dcfbc7-0d1d-4cbb-9d2e-41645ff7b738" />
+
 Meet SLIKSYNTH - ORION.
+
+<img width="1314" height="806" alt="image" src="https://github.com/user-attachments/assets/e4964987-06d7-4131-808c-e72057a1244a" />
 
 A simple yet semi-advanced browser-based polyphonic synthesizer and sequencer built with Tone.js. 
 
