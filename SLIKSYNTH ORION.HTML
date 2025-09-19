@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Synthesizer & Sequencer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            overscroll-behavior: none;
+        }
+        /* Custom styles for better UI elements */
+        .knob {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #2d3748;
+            border: 2px solid #4a5568;
+            cursor: pointer;
+            position: relative;
+        }
+        .knob::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            background: #cbd5e0;
+            border-radius: 50%;
+        }
+        .note {
+            transition: background-color 0.1s ease;
+        }
+        .note.active {
+            background-color: #f56565;
+            box-shadow: 0 0 10px #f56565, 0 0 5px #f56565 inset;
+        }
+        .piano-key {
+            border: 1px solid #4a5568;
+            transition: background-color 0.1s;
+        }
+        .piano-key.white:active, .piano-key.white.playing { background-color: #a0aec0; }
+        .piano-key.black { background-color: #1a202c; z-index: 1; }
+        .piano-key.black:active, .piano-key.black.playing { background-color: #4a5568; }
+
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .highlight-col {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #4a5568;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #cbd5e0;
+            margin-top: -5px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden">
+
+    <div id="start-screen" class="absolute inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-50">
+        <button id="start-button" class="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg text-2xl animate-pulse">
+            Start Synthesizer
+        </button>
+    </div>
+
+    <div class="w-full max-w-7xl mx-auto bg-gray-800 rounded-xl shadow-2xl p-4 space-y-4">
+        <!-- Header Controls -->
+        <header class="flex flex-wrap items-center justify-between gap-4 bg-gray-700 p-3 rounded-lg">
+            <h1 class="text-2xl font-bold text-white">
+                SLIKSYNTH - ORION
+            </h1>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <label for="bpm" class="font-medium">BPM</label>
+                    <input type="range" id="bpm" min="40" max="240" value="120" class="w-32">
+                    <span id="bpm-value" class="w-12 text-center bg-gray-800 rounded px-2 py-1">120</span>
+                </div>
+                <button id="play-stop" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition-transform transform active:scale-95">
+                    Play
+                </button>
+            </div>
+             <div class="text-sm text-gray-400">Use <kbd class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Spacebar</kbd> to Play/Stop.</div>
+        </header>
+
+        <!-- Main Content: Sequencer and Editors -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Piano Roll -->
+            <div class="lg:col-span-2 bg-gray-900 p-4 rounded-lg shadow-inner">
+                <h2 class="text-lg font-semibold mb-2">Piano Roll</h2>
+                <div id="piano-roll-container" class="w-full h-96 overflow-auto bg-gray-800 border-2 border-gray-700 rounded-md relative">
+                    <div id="piano-roll-grid" class="relative grid grid-cols-16"></div>
+                    <div id="playhead" class="absolute top-0 bottom-0 w-[6.25%] bg-red-500 opacity-30 pointer-events-none z-10" style="left: 0; display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Editors -->
+            <div class="space-y-4">
+                <div class="bg-gray-900 p-4 rounded-lg shadow-inner">
+                    <h2 class="text-lg font-semibold mb-2">Wavetable Presets</h2>
+                    <select id="wavetable-preset" class="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
+                        <option value="sine">Sine</option>
+                        <option value="fatsawtooth">Fat Saw</option>
+                        <option value="fatsquare">Fat Square</option>
+                        <option value="fatriangle">Fat Triangle</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="pwm">PWM</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="square">Square</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Select a waveform for the oscillator.</p>
+                </div>
+                <div class="bg-gray-900 p-4 rounded-lg shadow-inner">
+                    <h2 class="text-lg font-semibold mb-2">LFO Presets</h2>
+                    <select id="lfo-preset" class="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
+                        <option value="none">None</option>
+                        <option value="sine">Sine</option>
+                        <option value="square">Square</option>
+                        <option value="sawtooth">Ramp Down</option>
+                        <option value="triangle">Triangle</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Modulates the filter cutoff frequency.</p>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Bottom Section: Synth Controls and Keyboard -->
+        <footer class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Synth Controls -->
+            <div class="md:col-span-1 bg-gray-700 p-4 rounded-lg flex flex-col justify-center">
+                 <h2 class="text-lg font-semibold mb-2 text-center">SYNTH CONTROLS</h2>
+                 <div class="grid grid-cols-2 gap-4">
+                    <!-- Envelope -->
+                    <div class="space-y-2">
+                        <h3 class="font-medium text-center">Envelope (ADSR)</h3>
+                        <div class="grid grid-cols-2 gap-2 text-center text-sm">
+                            <div><label for="attack">Attack</label><input type="range" id="attack" min="1" max="100" value="5" class="w-full"></div>
+                            <div><label for="decay">Decay</label><input type="range" id="decay" min="1" max="100" value="20" class="w-full"></div>
+                            <div><label for="sustain">Sustain</label><input type="range" id="sustain" min="0" max="100" value="70" class="w-full"></div>
+                            <div><label for="release">Release</label><input type="range" id="release" min="1" max="100" value="30" class="w-full"></div>
+                        </div>
+                    </div>
+                     <!-- Filter & Waveform -->
+                    <div class="space-y-2">
+                         <h3 class="font-medium text-center">Filter & Wave</h3>
+                        <div class="grid grid-cols-2 gap-2 text-center text-sm">
+                           <div><label for="filterCutoff">Cutoff</label><input type="range" id="filterCutoff" min="100" max="8000" value="4000" class="w-full"></div>
+                            <div><label for="filterRes">Resonance</label><input type="range" id="filterRes" min="0" max="20" value="2" class="w-full"></div>
+                        </div>
+                        <div class="mt-2">
+                           
+                        </div>
+                    </div>
+                 </div>
+            </div>
+
+            <!-- Live Keyboard -->
+            <div class="md:col-span-2 bg-gray-900 p-4 rounded-lg shadow-inner overflow-hidden">
+                <h2 class="text-lg font-semibold mb-2">Live Keyboard</h2>
+                <div id="keyboard" class="relative w-full h-24 flex">
+                    <!-- Keys will be generated by JS -->
+                </div>
+                 <p class="text-xs text-gray-500 mt-2">Keyboard mapping: `A` to `K` for white keys, `W` to `I` for black keys.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const startButton = document.getElementById('start-button');
+            const startScreen = document.getElementById('start-screen');
+            if (!startButton || !startScreen) return;
+
+            startButton.addEventListener('click', () => {
+                Tone.start().then(() => {
+                    console.log('Audio context started');
+                    startScreen.style.display = 'none';
+                    initializeSynth();
+                });
+            });
+
+            function initializeSynth() {
+                // --- GLOBAL VARS ---
+                const NUM_STEPS = 16;
+                const NUM_NOTES = 24; // 2 Octaves
+                const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+                let noteGrid = Array(NUM_NOTES).fill(0).map(() => Array(NUM_STEPS).fill(0));
+                
+                // --- SYNTH SETUP ---
+                const filter = new Tone.Filter({
+                    type: 'lowpass',
+                    frequency: 4000,
+                    Q: 2,
+                }).toDestination();
+
+                const synth = new Tone.PolySynth({
+                    oscillator: { type: 'sine' },
+                    envelope: {
+                        attack: 0.005,
+                        decay: 0.1,
+                        sustain: 0.3,
+                        release: 1,
+                    },
+                }).connect(filter);
+                
+                // --- LFO SETUP ---
+                let lfo = null;
+                
+                let lfoPart = null; // To hold our custom LFO part
+
+                // --- UI ELEMENTS ---
+                const pianoRollGrid = document.getElementById('piano-roll-grid');
+                const playhead = document.getElementById('playhead');
+                const keyboardEl = document.getElementById('keyboard');
+                const bpmSlider = document.getElementById('bpm');
+                const bpmValue = document.getElementById('bpm-value');
+                const playStopButton = document.getElementById('play-stop');
+
+                // --- PIANO ROLL GENERATION ---
+                pianoRollGrid.style.gridTemplateRows = `repeat(${NUM_NOTES}, 1fr)`;
+                pianoRollGrid.style.gridTemplateColumns = `repeat(${NUM_STEPS}, 1fr)`;
+                pianoRollGrid.style.height = `${NUM_NOTES * 1.5}rem`; // Make grid taller for usability
+                for (let i = 0; i < NUM_NOTES; i++) {
+                    for (let j = 0; j < NUM_STEPS; j++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('note', 'border-b', 'border-r', 'border-gray-600'); // Lighter border
+                        // Add darker background for black keys rows
+                        const noteName = NOTES[(NUM_NOTES - 1 - i) % 12];
+                        if (noteName.includes('#')) {
+                            cell.classList.add('bg-gray-900'); // Higher contrast background
+                        } else {
+                            cell.classList.add('bg-gray-700'); // Higher contrast background
+                        }
+                        
+                        cell.dataset.noteIndex = i;
+                        cell.dataset.step = j;
+                        cell.addEventListener('click', () => {
+                            noteGrid[i][j] = noteGrid[i][j] === 1 ? 0 : 1;
+                            cell.classList.toggle('active');
+                        });
+                        pianoRollGrid.appendChild(cell);
+                    }
+                }
+                
+                // --- SEQUENCER LOGIC ---
+                let currentStep = 0;
+                const sequence = new Tone.Loop(time => {
+                    Tone.Draw.schedule(() => {
+                        playhead.style.left = `${(currentStep / NUM_STEPS) * 100}%`;
+                        const prevStep = (currentStep - 1 + NUM_STEPS) % NUM_STEPS;
+                        document.querySelectorAll(`[data-step="${prevStep}"]`).forEach(el => el.classList.remove('highlight-col'));
+                        document.querySelectorAll(`[data-step="${currentStep}"]`).forEach(el => el.classList.add('highlight-col'));
+                    }, time);
+                    
+                    const notesToPlay = [];
+                    for (let i = 0; i < NUM_NOTES; i++) {
+                        if (noteGrid[i][currentStep] === 1) { // <-- FIX: was 'j', which is undefined here
+                            const octave = Math.floor((NUM_NOTES - 1 - i) / 12) + 4;
+                            const note = NOTES[(NUM_NOTES - 1 - i) % 12];
+                            notesToPlay.push(`${note}${octave}`);
+                        }
+                    }
+
+                    if (notesToPlay.length > 0) {
+                        synth.triggerAttackRelease(notesToPlay, "16n", time);
+                    }
+                    currentStep = (currentStep + 1) % NUM_STEPS;
+                }, "16n").start(0);
+
+                // --- TRANSPORT CONTROLS ---
+                function toggleTransport() {
+                    if (Tone.Transport.state === 'started') {
+                        Tone.Transport.stop();
+                        playStopButton.textContent = 'Play';
+                         playhead.style.display = 'none';
+                         document.querySelectorAll('.highlight-col').forEach(el => el.classList.remove('highlight-col'));
+                    } else {
+                        Tone.Transport.start();
+                        playStopButton.textContent = 'Stop';
+                        playhead.style.display = 'block';
+                        currentStep = 0; // Reset on play
+                    }
+                }
+                playStopButton.addEventListener('click', toggleTransport);
+                document.body.addEventListener('keydown', (e) => {
+                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                    if (e.code === 'Space') {
+                        e.preventDefault();
+                        toggleTransport();
+                    }
+                });
+
+                bpmSlider.addEventListener('input', e => {
+                    Tone.Transport.bpm.value = e.target.value;
+                    bpmValue.textContent = e.target.value;
+                });
+                
+                // --- KEYBOARD GENERATION & MAPPING ---
+                const KEY_MAP = {
+                    'KeyA': 'C4', 'KeyW': 'C#4', 'KeyS': 'D4', 'KeyE': 'D#4', 'KeyD': 'E4', 'KeyF': 'F4', 'KeyT': 'F#4',
+                    'KeyG': 'G4', 'KeyY': 'G#4', 'KeyH': 'A4', 'KeyU': 'A#4', 'KeyJ': 'B4', 'KeyK': 'C5'
+                };
+                const keyToElement = {};
+                
+                function createKeyboard() {
+                    const notesFor2Octaves = [];
+                    for(let oct=3; oct<=4; oct++) {
+                        NOTES.forEach(note => notesFor2Octaves.push(note + oct));
+                    }
+
+                    let whiteKeyCount = 0;
+                    const keyboardWidth = keyboardEl.offsetWidth;
+                    const whiteKeyWidth = keyboardWidth / 15; // 14 white keys in 2 octaves
+
+                    for(let i=0; i<NUM_NOTES; i++) {
+                        const octave = Math.floor(i / 12) + 4;
+                        const note = NOTES[i % 12];
+                        const noteName = `${note}${octave}`;
+                        const key = document.createElement('div');
+                        key.classList.add('piano-key');
+                        key.dataset.note = noteName;
+                        
+                        if (note.includes('#')) { // Black key
+                            key.classList.add('black', 'h-1/2', 'w-[4%]', 'absolute');
+                            key.style.left = `${(whiteKeyCount - 0.5) * (100 / 14) + 0.5}%`;
+
+                        } else { // White key
+                             key.classList.add('white', 'h-full', 'w-[7.14%]');
+                            whiteKeyCount++;
+                        }
+                        keyToElement[noteName] = key;
+                        keyboardEl.appendChild(key);
+
+                        key.addEventListener('mousedown', () => synth.triggerAttack(noteName));
+                        key.addEventListener('mouseup', () => synth.triggerRelease(noteName));
+                        key.addEventListener('mouseleave', () => synth.triggerRelease(noteName));
+                         key.addEventListener('touchstart', (e) => { e.preventDefault(); synth.triggerAttack(noteName); });
+                        key.addEventListener('touchend', (e) => { e.preventDefault(); synth.triggerRelease(noteName); });
+                    }
+                }
+                createKeyboard();
+                
+                document.addEventListener('keydown', (e) => {
+                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
+                    const note = KEY_MAP[e.code];
+                    if (note) {
+                        synth.triggerAttack(note);
+                        if(keyToElement[note]) keyToElement[note].classList.add('playing');
+                    }
+                });
+                 document.addEventListener('keyup', (e) => {
+                    const note = KEY_MAP[e.code];
+                    if (note) {
+                        synth.triggerRelease(note);
+                         if(keyToElement[note]) keyToElement[note].classList.remove('playing');
+                    }
+                });
+                
+                // --- CANVAS DRAWING LOGIC ---
+                
+                // Wavetable Canvas
+                
+                // LFO Canvas - FIX: Re-rewritten to use setValueCurveAtTime for robustness
+                
+
+
+                // --- SYNTH PARAMETER CONTROLS ---
+                document.getElementById('attack').addEventListener('input', e => synth.set({ envelope: { attack: e.target.value / 100 } }));
+                document.getElementById('decay').addEventListener('input', e => synth.set({ envelope: { decay: e.target.value / 100 } }));
+                document.getElementById('sustain').addEventListener('input', e => synth.set({ envelope: { sustain: e.target.value / 100 } }));
+                document.getElementById('release').addEventListener('input', e => synth.set({ envelope: { release: e.target.value / 50 } }));
+                document.getElementById('filterCutoff').addEventListener('input', e => {
+                    filter.frequency.value = e.target.value;
+                    if (lfo) {
+                        lfo.max = e.target.value; // Update LFO range
+                    }
+                });
+                document.getElementById('filterRes').addEventListener('input', e => filter.Q.value = e.target.value);
+
+                // --- PRESET CONTROLS ---
+                document.getElementById('wavetable-preset').addEventListener('change', e => {
+                    synth.set({ oscillator: { type: e.target.value } });
+                });
+
+                function updateLfo(shape) {
+                    if (lfo) {
+                        lfo.stop();
+                        lfo.disconnect();
+                        lfo.dispose();
+                        lfo = null;
+                    }
+
+                    if (shape !== 'none') {
+                        const cutoffMax = parseFloat(document.getElementById('filterCutoff').value);
+                        const cutoffMin = 100;
+                        lfo = new Tone.LFO({
+                            type: shape,
+                            frequency: "4n",
+                            min: cutoffMin,
+                            max: cutoffMax,
+                        }).connect(filter.frequency).start();
+                    }
+                }
+
+                document.getElementById('lfo-preset').addEventListener('change', e => {
+                    updateLfo(e.target.value);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
